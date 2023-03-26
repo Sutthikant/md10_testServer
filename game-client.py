@@ -70,6 +70,8 @@ class Player:
         self.x = 0
         self.y = 0
         self.id = None
+        self.height = 50
+        self.width = 50
 
         self.screen = screen
 
@@ -82,10 +84,63 @@ class Player:
         self.image = self.images[self.image_index]
         self.rect = self.image.get_rect()
 
+        self.numBullet = 0
+
     def draw(self):
         self.screen.blit(self.image, self.rect)
 
     def update(self):
+        self.image_index += 1
+        self.image_index %= len(self.images)
+
+        self.image = self.images[self.image_index]
+
+        self.rect.x = self.x
+        self.rect.y = self.y
+
+class Bullet:
+    def __init__(self, screen, image_files, scale, angle, player):
+        self.x = 0
+        self.y = 0
+
+        self.screen_width = screen.get_width()
+        self.screen_height = screen.get_height()
+        self.screen = screen
+
+        self.width = 10
+        self.height = 10
+        self.color = "red"
+        self.speed_x = 0
+        self.speed_y = 0
+
+        self.is_active = True
+
+        self.image_index = 0
+
+        self.images = []
+        for file_name in image_files:
+            self.images.append(prepare_image(file_name, scale, angle))
+
+        self.image = self.images[self.image_index]
+        self.rect = self.image.get_rect()
+
+        self.player = player
+
+    def draw(self):
+        if not self.is_active:
+            return
+
+        pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height))
+
+    def update(self):
+
+        self.x += self.speed_x
+        self.y += self.speed_y
+
+        if self.x < 0 or self.x > self.screen_width or self.y < 0 or self.y > self.screen_height:
+            self.is_active = False
+            return
+
         self.image_index += 1
         self.image_index %= len(self.images)
 
@@ -118,7 +173,7 @@ async def send_events(eventsData, writer):
 
         logging.info(f"send_events coroutine: sent {message}")
 
-async def receive_events(player, other_players, reader):
+async def receive_events(player, other_players, bullets, reader):
     while running:
         # fake_data = "0,50,200,1,400,600,2,25,550".encode()
         message = await reader.readline()
@@ -128,13 +183,19 @@ async def receive_events(player, other_players, reader):
         # message = fake_data
 
         logging.info(f"message received: {message.decode()}")
-        data_parts=message.decode().split(",")
+        pre_data_parts = message.decode().split(":")
+        data_parts= pre_data_parts[0].split(",")
+        data_parts = data_parts[:-1]
+        bullet_parts = pre_data_parts[1].split(",")
+        bullet_parts[-1] = bullet_parts[-1][:-1]
+        print(data_parts, bullet_parts)
 
         for i in range(0, len(data_parts), 3):
             player_id = int(data_parts[i])
             if player_id == player.id:
                 player.x = float(data_parts[i+1])
                 player.y = float(data_parts[i+2])
+
             else:
                 check = False
                 for other_player in other_players:
@@ -150,10 +211,36 @@ async def receive_events(player, other_players, reader):
                     other_players[-1].x = float(data_parts[i+1])
                     other_players[-1].y = float(data_parts[i+2])
 
+        if len(bullet_parts) != 1:
+            for i in range(0, len(bullet_parts), 3):
+                player_id = int(bullet_parts[i])
+                if player_id == player.id:
+                    print(1)
+                    if player.numBullet < 3:
+                        print(2)
+                        bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
+                        bullet.x = float(bullet_parts[i + 1])
+                        bullet.y = float(bullet_parts[i + 2])
+                        bullet.speed_y = -1
+                        bullets.append(bullet)
+                        player.numBullet += 1
+                else:
+                    for other_player in other_players:
+                        if player_id == other_player.id:
+                            print(3)
+                            if other_player.numBullet < 3:
+                                print(4)
+                                bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
+                                bullet.x = float(bullet_parts[i + 1])
+                                bullet.y = float(bullet_parts[i + 2])
+                                bullet.speed_y = -1
+                                bullets.append(bullet)
+                                other_player.numBullet += 1
+
         # await asyncio.sleep(0.05)
 
-async def data_exchange(player, eventsData, other_players):
-    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+async def data_exchange(player, eventsData, other_players, bullets):
+    reader, writer = await asyncio.open_connection("localhost", 8888)
 
     initial_data = await reader.readline()
     logging.info(f"initial data received: {initial_data.decode()}")
@@ -161,18 +248,18 @@ async def data_exchange(player, eventsData, other_players):
     player.id = int(data_parts[1])
 
     send_events_task = asyncio.create_task(send_events(eventsData, writer))
-    receive_events_task = asyncio.create_task(receive_events(player, other_players, reader))
+    receive_events_task = asyncio.create_task(receive_events(player, other_players, bullets, reader))
 
     await asyncio.gather(send_events_task, receive_events_task)
 
     print("data_exchange coroutine finished")
 
-def data_exchange_thread_func(player, eventsData, other_players):
+def data_exchange_thread_func(player, eventsData, other_players, bullets):
     global running
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(data_exchange(player, eventsData, other_players))
+    loop.run_until_complete(data_exchange(player, eventsData, other_players, bullets))
 
     loop.close()
 
@@ -185,11 +272,12 @@ def main():
 
     player = Player(screen, ["images/ship1.png", "images/ship2.png", "images/ship3.png"], 0.25, 0)
     console = Console(screen)
+    bullets = []
 
     eventsData = EventsData(False, False, False, False, False)
 
     # create data exchange thread
-    data_exchange_thread = threading.Thread(target=data_exchange_thread_func, args=(player, eventsData, other_players))
+    data_exchange_thread = threading.Thread(target=data_exchange_thread_func, args=(player, eventsData, other_players, bullets))
     data_exchange_thread.start()
 
     while running:
@@ -233,6 +321,23 @@ def main():
         screen.fill("black")
 
         # draw other players
+        
+        bullet_del = False
+
+        for bullet in bullets:
+            bullet.update()
+            bullet.draw()
+            if not bullet.is_active:
+                if bullet.player == player.id:
+                    player.numBullet -= 1
+                else:
+                    for other_player in other_players:
+                        if other_player.id == bullet.player:
+                            other_player.numBullet -= 1
+                bullets.remove(bullet)
+
+        # bullets = [bullet for bullet in bullets if bullet.is_active]
+
         for other_player in other_players:
             other_player.update()
             other_player.draw()
@@ -241,7 +346,9 @@ def main():
             player.update()
             player.draw()
 
-        console.log(f"Player x: {int(player.x)}, y: {int(player.y)}")
+        bullet_status = [bullet.is_active for bullet in bullets]
+
+        console.log(f"Player x: {int(player.x)}, y: {int(player.y)}, bullets: {bullet_status}")
         console.draw()
 
         # flip() the display to put your work on screen
