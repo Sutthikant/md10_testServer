@@ -21,6 +21,7 @@ class Bullet:
     x: float
     y: float
     player_id: int
+    id: int
     
     is_active: bool = True
     width: float = 10
@@ -97,8 +98,20 @@ class GameServer:
 
             for bullet in self.bullets:
 
-                game_state_encoded += f'{bullet.player_id}, {bullet.x}, {bullet.y},'
-                self.bullets.remove(bullet)
+                bullet.y += bullet.speed_y
+
+                #prevent bullet out of screen
+                if bullet.x < 0 or bullet.x > self.game_field_width or bullet.y < 0 or bullet.y > self.game_field_height:
+                    bullet.is_active = False
+
+                game_state_encoded += f'{bullet.id}, {int(bullet.is_active)}, {bullet.x}, {bullet.y},'
+                    
+                if not bullet.is_active:
+                    for player in self.players:
+                        if bullet.player_id == player.id:
+                            player.fire -= 1
+                    self.bullets.remove(bullet)
+
                 
 
             for player in self.players:
@@ -120,22 +133,26 @@ class GameServer:
         self.players.append(player)
 
         # Listen for messages from the client and broadcast them to all other clients
+        bullet_count = 0
         while True:
             message = (await reader.readline()).decode()
             if not message:
                 break
-
             logging.info(f'Player sent: {message}')
             x_action, y_action, fire_action = message.split(',')
             player.speed_x += float(x_action)
             player.speed_y += float(y_action)
             if int(fire_action) == 1:
-                player.fire += 1
-                bullet = Bullet()
-                bullet.x = player.x + player.width / 2 - bullet.width / 2
-                bullet.y = player.y + player.height / 2 - bullet.height / 2
-                bullet.player_id = player.id
-                self.bullets.append(bullet)
+                bullet_count += 1
+                print(bullet_count)
+                if player.fire < 3:
+                    player.fire += 1
+                    bullet = Bullet()
+                    bullet.id = bullet_count
+                    bullet.x = player.x + player.width / 2 - bullet.width / 2
+                    bullet.y = player.y + player.height / 2 - bullet.height / 2
+                    bullet.player_id = player.id
+                    self.bullets.append(bullet)
 
 
         # Remove the client from the list of connected clients

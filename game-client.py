@@ -99,7 +99,7 @@ class Player:
         self.rect.y = self.y
 
 class Bullet:
-    def __init__(self, screen, image_files, scale, angle, player):
+    def __init__(self, screen, image_files, scale, angle, id):
         self.x = 0
         self.y = 0
 
@@ -124,7 +124,7 @@ class Bullet:
         self.image = self.images[self.image_index]
         self.rect = self.image.get_rect()
 
-        self.player = player
+        self.id = id
 
     def draw(self):
         if not self.is_active:
@@ -133,14 +133,6 @@ class Bullet:
         pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height))
 
     def update(self):
-
-        self.x += self.speed_x
-        self.y += self.speed_y
-
-        if self.x < 0 or self.x > self.screen_width or self.y < 0 or self.y > self.screen_height:
-            self.is_active = False
-            return
-
         self.image_index += 1
         self.image_index %= len(self.images)
 
@@ -212,30 +204,51 @@ async def receive_events(player, other_players, bullets, reader):
                     other_players[-1].y = float(data_parts[i+2])
 
         if len(bullet_parts) != 1:
-            for i in range(0, len(bullet_parts), 3):
-                player_id = int(bullet_parts[i])
-                if player_id == player.id:
-                    print(1)
-                    if player.numBullet < 3:
-                        print(2)
-                        bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
-                        bullet.x = float(bullet_parts[i + 1])
-                        bullet.y = float(bullet_parts[i + 2])
+            for i in range(0, len(bullet_parts), 4):
+                bullet_id = int(bullet_parts[i])
+                bullet_status = int(bullet_parts[i + 1])
+                print(bullet_status)
+                if bullet_status == 0:
+                    print("Yes")
+                    for bullet in bullets:
+                        if bullet.id == bullet_id:
+                            bullets.remove(bullet)
+                else:
+                    have_bullet = False
+                    for bullet in bullets:
+                        if bullet.id == bullet_id:
+                            bullet.x = float(bullet_parts[i + 2])
+                            bullet.y = float(bullet_parts[i + 3])
+                            have_bullet = True
+                            break
+                    if not have_bullet:
+                        bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, bullet_id)
+                        bullet.x = float(bullet_parts[i + 2])
+                        bullet.y = float(bullet_parts[i + 3])
                         bullet.speed_y = -1
                         bullets.append(bullet)
-                        player.numBullet += 1
-                else:
-                    for other_player in other_players:
-                        if player_id == other_player.id:
-                            print(3)
-                            if other_player.numBullet < 3:
-                                print(4)
-                                bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
-                                bullet.x = float(bullet_parts[i + 1])
-                                bullet.y = float(bullet_parts[i + 2])
-                                bullet.speed_y = -1
-                                bullets.append(bullet)
-                                other_player.numBullet += 1
+                # if player_id == player.id:
+                #     print(1)
+                #     if player.numBullet < 3:
+                #         print(2)
+                #         bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
+                #         bullet.x = float(bullet_parts[i + 1])
+                #         bullet.y = float(bullet_parts[i + 2])
+                #         bullet.speed_y = -1
+                #         bullets.append(bullet)
+                #         player.numBullet += 1
+                # else:
+                #     for other_player in other_players:
+                #         if player_id == other_player.id:
+                #             print(3)
+                #             if other_player.numBullet < 3:
+                #                 print(4)
+                #                 bullet = Bullet(screen, ['images/bullet.png'], 0.25, 0, player_id)
+                #                 bullet.x = float(bullet_parts[i + 1])
+                #                 bullet.y = float(bullet_parts[i + 2])
+                #                 bullet.speed_y = -1
+                #                 bullets.append(bullet)
+                #                 other_player.numBullet += 1
 
         # await asyncio.sleep(0.05)
 
@@ -327,14 +340,6 @@ def main():
         for bullet in bullets:
             bullet.update()
             bullet.draw()
-            if not bullet.is_active:
-                if bullet.player == player.id:
-                    player.numBullet -= 1
-                else:
-                    for other_player in other_players:
-                        if other_player.id == bullet.player:
-                            other_player.numBullet -= 1
-                bullets.remove(bullet)
 
         # bullets = [bullet for bullet in bullets if bullet.is_active]
 
@@ -346,7 +351,7 @@ def main():
             player.update()
             player.draw()
 
-        bullet_status = [bullet.is_active for bullet in bullets]
+        bullet_status = [bullet.id for bullet in bullets]
 
         console.log(f"Player x: {int(player.x)}, y: {int(player.y)}, bullets: {bullet_status}")
         console.draw()
