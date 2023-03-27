@@ -16,6 +16,7 @@ class Player:
     fire: int = 0
     width: float = 60
     height: float = 75
+    life_point: int = 3
 
 class Bullet:
     x: float
@@ -88,8 +89,16 @@ class GameServer:
                     player.speed_y -= self.acceleration * 0.5
                 elif player.speed_y < 0:
                     player.speed_y += self.acceleration * 0.5
+
+                #prevent bullet hit the other players
+                for bullet in self.bullets:
+                    if player.id != bullet.player_id:
+                        if abs(player.x - bullet.x) <= self.player_width and abs(player.y - (bullet.y + bullet.speed_y)) <= self.player_height:
+                            bullet.is_active = False
+                            player.life_point -= 1
                 
-                game_state_encoded += f'{player.id},{player.x},{player.y},'
+                
+                game_state_encoded += f'{player.id},{player.x},{player.y},{player.life_point},'
             
             game_state_encoded += f':'
 
@@ -104,6 +113,7 @@ class GameServer:
                 if bullet.x < 0 or bullet.x > self.game_field_width or bullet.y < 0 or bullet.y > self.game_field_height:
                     bullet.is_active = False
 
+
                 game_state_encoded += f'{bullet.id}, {int(bullet.is_active)}, {bullet.x}, {bullet.y},'
                     
                 if not bullet.is_active:
@@ -117,6 +127,10 @@ class GameServer:
             for player in self.players:
                 player.writer.write(f"{game_state_encoded[:-1]}\n".encode())
                 await player.writer.drain()
+                
+            for player in self.players:
+                if player.life_point == 0:
+                    self.players.remove(player)
 
             logging.info(f'State sent: {game_state_encoded}')
             await asyncio.sleep(0.05)
@@ -148,7 +162,7 @@ class GameServer:
                 if player.fire < 3:
                     player.fire += 1
                     bullet = Bullet()
-                    bullet.id = bullet_count
+                    bullet.id = f"{player.id}_{bullet_count}"
                     bullet.x = player.x + player.width / 2 - bullet.width / 2
                     bullet.y = player.y + player.height / 2 - bullet.height / 2
                     bullet.player_id = player.id

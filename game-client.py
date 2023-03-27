@@ -85,6 +85,8 @@ class Player:
         self.rect = self.image.get_rect()
 
         self.numBullet = 0
+        self.life_point = 3
+        self.is_alive = True
 
     def draw(self):
         self.screen.blit(self.image, self.rect)
@@ -97,6 +99,7 @@ class Player:
 
         self.rect.x = self.x
         self.rect.y = self.y
+
 
 class Bullet:
     def __init__(self, screen, image_files, scale, angle, id):
@@ -182,11 +185,12 @@ async def receive_events(player, other_players, bullets, reader):
         bullet_parts[-1] = bullet_parts[-1][:-1]
         print(data_parts, bullet_parts)
 
-        for i in range(0, len(data_parts), 3):
+        for i in range(0, len(data_parts), 4):
             player_id = int(data_parts[i])
             if player_id == player.id:
                 player.x = float(data_parts[i+1])
                 player.y = float(data_parts[i+2])
+                player.life_point = int(data_parts[i + 3])
 
             else:
                 check = False
@@ -194,6 +198,7 @@ async def receive_events(player, other_players, bullets, reader):
                     if player_id == other_player.id:
                         other_player.x = float(data_parts[i+1])
                         other_player.y = float(data_parts[i+2])
+                        other_player.life_point = int(data_parts[i + 3])
                         check = True
                         break
                 if not check:
@@ -202,12 +207,13 @@ async def receive_events(player, other_players, bullets, reader):
                     other_players.append(other_player)
                     other_players[-1].x = float(data_parts[i+1])
                     other_players[-1].y = float(data_parts[i+2])
+                    other_player.life_point = int(data_parts[i + 3])
 
         if len(bullet_parts) != 1:
             for i in range(0, len(bullet_parts), 4):
-                bullet_id = int(bullet_parts[i])
+                bullet_id = bullet_parts[i]
                 bullet_status = int(bullet_parts[i + 1])
-                print(bullet_status)
+                # print(bullet_status)
                 if bullet_status == 0:
                     print("Yes")
                     for bullet in bullets:
@@ -346,14 +352,21 @@ def main():
         for other_player in other_players:
             other_player.update()
             other_player.draw()
+            if other_player.life_point == 0:
+                other_players.remove(other_player)
+
 
         if player.id is not None:
             player.update()
             player.draw()
+            if player.life_point == 0:
+                player.is_alive = False
 
-        bullet_status = [bullet.id for bullet in bullets]
 
-        console.log(f"Player x: {int(player.x)}, y: {int(player.y)}, bullets: {bullet_status}")
+        if player.is_alive:
+            console.log(f"Player x: {int(player.x)}, y: {int(player.y)}, life_point: {player.life_point}")
+        else:
+            console.log("You are DEAD")
         console.draw()
 
         # flip() the display to put your work on screen
